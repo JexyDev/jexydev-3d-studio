@@ -2,6 +2,8 @@
  * DataPacketStream.tsx
  * Renders animated glowing 3D data packets traveling along curved splines
  * from HermesCore to each active agent workstation.
+ * Enhanced with comet trail effects, larger glowing spheres, emissive
+ * materials, and multiple simultaneous packets per stream.
  */
 
 import { useRef, useMemo } from 'react';
@@ -15,13 +17,15 @@ interface DataPacketStreamProps {
 }
 
 const HERMES_POS = new THREE.Vector3(0, 0.5, 0);
+const PACKETS_PER_STREAM = 4;
+const TRAIL_LENGTH = 5;
 
 interface PacketData {
   taskId: string;
   agentId: AgentId;
   color: string;
   curve: THREE.CatmullRomCurve3;
-  offset: number; // 0–1 progress offset for phase staggering
+  offset: number;
 }
 
 function buildCurve(agentId: AgentId): THREE.CatmullRomCurve3 {
@@ -29,7 +33,6 @@ function buildCurve(agentId: AgentId): THREE.CatmullRomCurve3 {
   const [ax, _ay, az] = def.position as [number, number, number];
   const target = new THREE.Vector3(ax, 0.8, az);
 
-  // Control points: start → midpoint arc → target
   const mid = HERMES_POS.clone().lerp(target, 0.5).add(
     new THREE.Vector3(
       (Math.random() - 0.5) * 2,
@@ -70,23 +73,18 @@ interface PacketTrailProps {
 }
 
 function PacketTrail({ packet }: PacketTrailProps) {
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  const progressRef = useRef(packet.offset);
-
-  // Tube geometry for the path (non-animated, just the trail path)
   const tubeGeom = useMemo(() => {
     return new THREE.TubeGeometry(packet.curve, 40, 0.008, 4, false);
   }, [packet.curve]);
 
-  useFrame((_state, delta) => {
-    progressRef.current = (progressRef.current + delta * 0.4) % 1;
-
-    if (meshRef.current) {
-      const pt = packet.curve.getPoint(progressRef.current);
-      meshRef.current.position.copy(pt);
+  // Generate multiple offset packets per stream
+  const offsets = useMemo(() => {
+    const result: number[] = [];
+    for (let i = 0; i < PACKETS_PER_STREAM; i++) {
+      result.push((packet.offset + i / PACKETS_PER_STREAM) % 1);
     }
-  });
+    return result;
+  }, [packet.offset]);
 
   return (
     <group>
@@ -100,31 +98,98 @@ function PacketTrail({ packet }: PacketTrailProps) {
         />
       </mesh>
 
-      {/* Moving packet */}
-      <mesh ref={meshRef}>
-        <sphereGeometry args={[0.07, 8, 8]} />
-        <meshBasicMaterial color={packet.color} />
-      </mesh>
-
-      {/* Packet point light for glow */}
-      <PacketLight meshRef={meshRef} color={packet.color} />
+      {/* Multiple moving packets with trail */}
+      {offsets.map((offset, idx) => (
+        <CometPacket
+          key={idx}
+          curve={packet.curve}
+          color={packet.color}
+          initialOffset={offset}
+        />
+      ))}
     </group>
   );
 }
 
-interface PacketLightProps {
-  meshRef: React.RefObject<THREE.Mesh | null>;
+/* ── Comet Packet with Trail ─────────────────────────────────────────────── */
+
+interface CometPacketProps {
+  curve: THREE.CatmullRomCurve3;
   color: string;
+  initialOffset: number;
 }
 
-function PacketLight({ meshRef, color }: PacketLightProps) {
+function CometPacket({ curve, color, initialOffset }: CometPacketProps) {
+  const leadRef = useRef<THREE.Mesh>(null);
+  const trailRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const progressRef = useRef(initialOffset);
   const lightRef = useRef<THREE.PointLight>(null);
 
-  useFrame(() => {
-    if (lightRef.current && meshRef.current) {
-      lightRef.current.position.copy(meshRef.current.position);
+  useFrame((_state, delta) => {
+    progressRef.current = (progressRef.current + delta * 0.4) % 1;
+
+    // Lead sphere
+    if (leadRef.current) {
+      const pt = curve.getPoint(progressRef.current);
+      leadRef.current.position.copy(pt);
+
+      // Update light position
+      if (lightRef.current) {
+        lightRef.current.position.copy(pt);
+      }
+    }
+
+    // Trail spheres — follow behind at decreasing progress
+    for (let i = 0; i < TRAIL_LENGTH; i++) {
+      const trailMesh = trailRefs.current[i];
+      if (trailMesh) {
+        const trailProgress = (progressRef.current - (i + 1) * 0.025 + 1) % 1;
+        const trailPt = curve.getPoint(trailProgress);
+        trailMesh.position.copy(trailPt);
+        // Fade out trail
+        const mat = trailMesh.material as THREE.MeshBasicMaterial;
+        mat.opacity = 0.6 - i * 0.1;
+      }
     }
   });
 
-  return <pointLight ref={lightRef} color={color} intensity={0.5} distance={1.5} decay={2} />;
+  return (
+    <group>
+      {/* Lead sphere — larger and glowing */}
+      <mesh ref={leadRef}>
+        <sphereGeometry args={[0.09, 10, 10]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={1.2}
+          metalness={0.3}
+          roughness={0.5}
+        />
+      </mesh>
+
+      {/* Trail spheres */}
+      {Array.from({ length: TRAIL_LENGTH }).map((_, i) => (
+        <mesh
+          key={i}
+          ref={(el) => { trailRefs.current[i] = el; }}
+        >
+          <sphereGeometry args={[0.06 - i * 0.008, 6, 6]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={0.6 - i * 0.1}
+          />
+        </mesh>
+      ))}
+
+      {/* Packet point light for glow */}
+      <pointLight
+        ref={lightRef}
+        color={color}
+        intensity={0.6}
+        distance={1.5}
+        decay={2}
+      />
+    </group>
+  );
 }

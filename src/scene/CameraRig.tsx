@@ -64,8 +64,6 @@ const PRESETS: Record<CameraPreset, PresetConfig> = {
   },
 };
 
-const LERP_FACTOR = 0.045;
-
 export default function CameraRig({ activePreset }: CameraRigProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
@@ -79,14 +77,14 @@ export default function CameraRig({ activePreset }: CameraRigProps) {
     targetLookAt.current.copy(preset.target);
   }, [activePreset]);
 
-  useFrame(() => {
-    // Smoothly lerp camera position
-    camera.position.lerp(targetPos.current, LERP_FACTOR);
+  useFrame((_, delta) => {
+    // Frame-rate independent exponential smoothing easing curve
+    const factor = 1 - Math.exp(-5.5 * Math.min(delta, 0.1));
+    camera.position.lerp(targetPos.current, factor);
 
-    // Smoothly lerp orbit controls target
     if (controlsRef.current) {
       tempTarget.current.copy(controlsRef.current.target);
-      tempTarget.current.lerp(targetLookAt.current, LERP_FACTOR);
+      tempTarget.current.lerp(targetLookAt.current, factor);
       controlsRef.current.target.copy(tempTarget.current);
       controlsRef.current.update();
     }

@@ -1,8 +1,8 @@
 /**
  * AgentWorkstation.tsx
- * Renders an individual agent workstation: desk, dual monitors,
- * geometric avatar with idle/working animation, floating status beacon,
- * and click/hover raycasting support.
+ * Renders an individual agent workstation with a detailed humanoid
+ * robot/android character built from Three.js primitives, articulated
+ * typing animations, floating holographic monitors, and particle effects.
  */
 
 import { useRef, useState, useMemo } from 'react';
@@ -27,17 +27,307 @@ const STATUS_COLORS: Record<string, string> = {
   REVIEWING: '#F97316',
 };
 
+const STATUS_EMOJIS: Record<string, string> = {
+  IDLE: '😴',
+  PLANNING: '🧠',
+  CODING: '⚡',
+  TESTING: '🔍',
+  DEPLOYING: '🚀',
+  REVIEWING: '📋',
+};
+
+/* ── Workstation Particle Effects ─────────────────────────────────────────── */
+
+const WS_PARTICLE_COUNT = 24;
+
+function WorkstationParticles({ color, active }: { color: string; active: boolean }) {
+  const pointsRef = useRef<THREE.Points>(null);
+
+  const positions = useMemo(() => {
+    const pos = new Float32Array(WS_PARTICLE_COUNT * 3);
+    for (let i = 0; i < WS_PARTICLE_COUNT; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 2.4;
+      pos[i * 3 + 1] = Math.random() * 2.0;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 2.0;
+    }
+    return pos;
+  }, []);
+
+  useFrame(({ clock }) => {
+    if (!pointsRef.current || !active) return;
+    const geo = pointsRef.current.geometry;
+    const posAttr = geo.getAttribute('position') as THREE.BufferAttribute;
+    const t = clock.getElapsedTime();
+    for (let i = 0; i < WS_PARTICLE_COUNT; i++) {
+      const baseY = positions[i * 3 + 1];
+      posAttr.setY(i, baseY + Math.sin(t * 1.5 + i * 0.8) * 0.3);
+    }
+    posAttr.needsUpdate = true;
+  });
+
+  if (!active) return null;
+
+  return (
+    <points ref={pointsRef}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          args={[positions, 3]}
+          count={WS_PARTICLE_COUNT}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        color={color}
+        size={0.03}
+        transparent
+        opacity={0.6}
+        sizeAttenuation
+        depthWrite={false}
+      />
+    </points>
+  );
+}
+
+/* ── Holographic Monitor Screen ──────────────────────────────────────────── */
+
+function HoloMonitor({
+  position,
+  rotation,
+  color,
+  active,
+  index,
+}: {
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  color: string;
+  active: boolean;
+  index: number;
+}) {
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  useFrame(({ clock }) => {
+    if (!meshRef.current) return;
+    const t = clock.getElapsedTime();
+    const mat = meshRef.current.material as THREE.MeshBasicMaterial;
+    mat.opacity = active
+      ? 0.25 + Math.sin(t * 2.5 + index) * 0.1
+      : 0.08;
+  });
+
+  return (
+    <mesh ref={meshRef} position={position} rotation={rotation ?? [0, 0, 0]}>
+      <planeGeometry args={[0.65, 0.42]} />
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={0.15}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+      />
+    </mesh>
+  );
+}
+
+/* ── Humanoid Robot Character ────────────────────────────────────────────── */
+
+function RobotCharacter({
+  color,
+  status,
+  isWorking,
+}: {
+  color: string;
+  status: string;
+  isWorking: boolean;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const leftArmRef = useRef<THREE.Group>(null);
+  const rightArmRef = useRef<THREE.Group>(null);
+  const visorRef = useRef<THREE.Mesh>(null);
+
+  const statusEmoji = STATUS_EMOJIS[status] ?? '😴';
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+
+    // Head subtle bob
+    if (groupRef.current) {
+      groupRef.current.position.y = isWorking
+        ? Math.sin(t * 1.5) * 0.02
+        : Math.sin(t * 0.4) * 0.01;
+    }
+
+    // Typing animation — arms move up/down rhythmically
+    if (leftArmRef.current && rightArmRef.current) {
+      if (isWorking) {
+        leftArmRef.current.rotation.x = -0.6 + Math.sin(t * 6) * 0.15;
+        rightArmRef.current.rotation.x = -0.6 + Math.sin(t * 6 + Math.PI) * 0.15;
+      } else {
+        // Arms folded / resting
+        leftArmRef.current.rotation.x = -0.3;
+        rightArmRef.current.rotation.x = -0.3;
+      }
+    }
+
+    // Visor glow pulse
+    if (visorRef.current) {
+      const mat = visorRef.current.material as THREE.MeshStandardMaterial;
+      mat.emissiveIntensity = isWorking
+        ? 0.6 + Math.sin(t * 3) * 0.3
+        : 0.2;
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={[0, 0.44, 0.45]}>
+      {/* ── Head ── */}
+      <group position={[0, 0.72, 0]}>
+        {/* Skull */}
+        <mesh castShadow>
+          <boxGeometry args={[0.22, 0.2, 0.2]} />
+          <meshStandardMaterial
+            color="#1E293B"
+            metalness={0.85}
+            roughness={0.15}
+          />
+        </mesh>
+        {/* Visor / face screen */}
+        <mesh ref={visorRef} position={[0, 0, 0.105]} castShadow>
+          <boxGeometry args={[0.18, 0.08, 0.02]} />
+          <meshStandardMaterial
+            color={color}
+            emissive={color}
+            emissiveIntensity={0.4}
+            metalness={0.3}
+            roughness={0.4}
+          />
+        </mesh>
+        {/* Status emoji label */}
+        <Text
+          position={[0, 0.0, 0.12]}
+          fontSize={0.07}
+          anchorX="center"
+          anchorY="middle"
+        >
+          {statusEmoji}
+        </Text>
+        {/* Antenna */}
+        <mesh position={[0, 0.14, 0]} castShadow>
+          <cylinderGeometry args={[0.008, 0.008, 0.08, 6]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} />
+        </mesh>
+        <mesh position={[0, 0.19, 0]}>
+          <sphereGeometry args={[0.015, 8, 8]} />
+          <meshBasicMaterial color={color} />
+        </mesh>
+      </group>
+
+      {/* ── Torso ── */}
+      <group position={[0, 0.42, 0]}>
+        {/* Main body */}
+        <mesh castShadow>
+          <boxGeometry args={[0.26, 0.3, 0.18]} />
+          <meshStandardMaterial
+            color="#162032"
+            metalness={0.8}
+            roughness={0.2}
+          />
+        </mesh>
+        {/* LED chest panel */}
+        <mesh position={[0, 0.02, 0.095]}>
+          <boxGeometry args={[0.14, 0.1, 0.01]} />
+          <meshStandardMaterial
+            color={color}
+            emissive={color}
+            emissiveIntensity={isWorking ? 0.6 : 0.15}
+            metalness={0.4}
+            roughness={0.3}
+          />
+        </mesh>
+      </group>
+
+      {/* ── Left Arm ── */}
+      <group ref={leftArmRef} position={[-0.19, 0.48, 0.05]}>
+        {/* Upper arm */}
+        <mesh position={[0, -0.08, 0]} castShadow>
+          <boxGeometry args={[0.06, 0.16, 0.06]} />
+          <meshStandardMaterial color="#1E293B" metalness={0.7} roughness={0.3} />
+        </mesh>
+        {/* Forearm */}
+        <mesh position={[0, -0.2, 0.04]} castShadow>
+          <boxGeometry args={[0.05, 0.12, 0.05]} />
+          <meshStandardMaterial color="#162032" metalness={0.7} roughness={0.3} />
+        </mesh>
+        {/* Hand */}
+        <mesh position={[0, -0.28, 0.06]}>
+          <sphereGeometry args={[0.025, 6, 6]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} />
+        </mesh>
+      </group>
+
+      {/* ── Right Arm ── */}
+      <group ref={rightArmRef} position={[0.19, 0.48, 0.05]}>
+        {/* Upper arm */}
+        <mesh position={[0, -0.08, 0]} castShadow>
+          <boxGeometry args={[0.06, 0.16, 0.06]} />
+          <meshStandardMaterial color="#1E293B" metalness={0.7} roughness={0.3} />
+        </mesh>
+        {/* Forearm */}
+        <mesh position={[0, -0.2, 0.04]} castShadow>
+          <boxGeometry args={[0.05, 0.12, 0.05]} />
+          <meshStandardMaterial color="#162032" metalness={0.7} roughness={0.3} />
+        </mesh>
+        {/* Hand */}
+        <mesh position={[0, -0.28, 0.06]}>
+          <sphereGeometry args={[0.025, 6, 6]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} />
+        </mesh>
+      </group>
+
+      {/* ── Seated Lower Body (legs on chair) ── */}
+      <group position={[0, 0.2, 0.05]}>
+        {/* Left thigh */}
+        <mesh position={[-0.06, 0, 0.04]} castShadow>
+          <boxGeometry args={[0.08, 0.08, 0.16]} />
+          <meshStandardMaterial color="#162032" metalness={0.7} roughness={0.3} />
+        </mesh>
+        {/* Right thigh */}
+        <mesh position={[0.06, 0, 0.04]} castShadow>
+          <boxGeometry args={[0.08, 0.08, 0.16]} />
+          <meshStandardMaterial color="#162032" metalness={0.7} roughness={0.3} />
+        </mesh>
+      </group>
+
+      {/* ── Futuristic Chair ── */}
+      <group position={[0, 0.1, 0.1]}>
+        {/* Seat */}
+        <mesh position={[0, 0, 0]} castShadow>
+          <boxGeometry args={[0.3, 0.04, 0.26]} />
+          <meshStandardMaterial color="#0F172A" metalness={0.9} roughness={0.1} />
+        </mesh>
+        {/* Backrest */}
+        <mesh position={[0, 0.2, -0.1]} castShadow>
+          <boxGeometry args={[0.28, 0.4, 0.03]} />
+          <meshStandardMaterial color="#0F172A" metalness={0.85} roughness={0.15} />
+        </mesh>
+        {/* Chair base */}
+        <mesh position={[0, -0.08, 0]}>
+          <cylinderGeometry args={[0.04, 0.06, 0.12, 8]} />
+          <meshStandardMaterial color="#162032" metalness={0.9} roughness={0.1} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+/* ── Main Component ──────────────────────────────────────────────────────── */
+
 export default function AgentWorkstation({ agent, state, isSelected, onClick }: AgentWorkstationProps) {
-  const avatarRef = useRef<THREE.Mesh>(null);
   const beaconRef = useRef<THREE.Mesh>(null);
-  const monitor1Ref = useRef<THREE.Mesh>(null);
-  const monitor2Ref = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
   const statusColor = STATUS_COLORS[state.status] ?? '#64748B';
   const isWorking = state.status !== 'IDLE';
   const accentColor = agent.accentColor;
-
 
   const statusMat = useMemo(
     () => new THREE.MeshBasicMaterial({ color: statusColor }),
@@ -51,33 +341,10 @@ export default function AgentWorkstation({ agent, state, isSelected, onClick }: 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
 
-    // Avatar idle/working animation
-    if (avatarRef.current) {
-      if (isWorking) {
-        avatarRef.current.rotation.y = t * 1.2;
-        avatarRef.current.position.y = 0.9 + Math.sin(t * 2) * 0.04;
-      } else {
-        avatarRef.current.rotation.y = Math.sin(t * 0.5) * 0.3;
-        avatarRef.current.position.y = 0.9;
-      }
-    }
-
     // Beacon pulse
     if (beaconRef.current) {
       const scale = isWorking ? 1 + Math.sin(t * 3) * 0.2 : 1 + Math.sin(t * 1) * 0.08;
       beaconRef.current.scale.setScalar(scale);
-    }
-
-    // Monitor glow pulse
-    if (monitor1Ref.current && monitor2Ref.current) {
-      const intensity = isWorking ? 0.6 + Math.sin(t * 4) * 0.3 : 0.4;
-      (monitor1Ref.current.material as THREE.MeshBasicMaterial).color.setStyle(
-        isWorking ? accentColor : '#1E3A5F',
-      );
-      (monitor2Ref.current.material as THREE.MeshBasicMaterial).color.setStyle(
-        isWorking ? accentColor : '#162032',
-      );
-      void intensity; // suppress unused warning
     }
   });
 
@@ -109,17 +376,18 @@ export default function AgentWorkstation({ agent, state, isSelected, onClick }: 
         </mesh>
       ))}
 
-      {/* Monitor 1 — left */}
+      {/* Holographic Monitor 1 — left */}
       <group position={[-0.5, 0.75, -0.3]}>
         <mesh castShadow>
           <boxGeometry args={[0.65, 0.42, 0.04]} />
           <meshStandardMaterial color="#0F172A" metalness={0.8} roughness={0.2} />
         </mesh>
-        {/* Screen */}
-        <mesh ref={monitor1Ref} position={[0, 0, 0.025]}>
-          <boxGeometry args={[0.59, 0.36, 0.01]} />
-          <meshBasicMaterial color={isWorking ? accentColor : '#1E3A5F'} />
-        </mesh>
+        <HoloMonitor
+          position={[0, 0, 0.025]}
+          color={accentColor}
+          active={isWorking}
+          index={0}
+        />
         {/* Monitor stand */}
         <mesh position={[0, -0.26, 0.05]} castShadow>
           <boxGeometry args={[0.08, 0.1, 0.08]} />
@@ -127,16 +395,18 @@ export default function AgentWorkstation({ agent, state, isSelected, onClick }: 
         </mesh>
       </group>
 
-      {/* Monitor 2 — right */}
+      {/* Holographic Monitor 2 — right */}
       <group position={[0.5, 0.75, -0.3]}>
         <mesh castShadow>
           <boxGeometry args={[0.65, 0.42, 0.04]} />
           <meshStandardMaterial color="#0F172A" metalness={0.8} roughness={0.2} />
         </mesh>
-        <mesh ref={monitor2Ref} position={[0, 0, 0.025]}>
-          <boxGeometry args={[0.59, 0.36, 0.01]} />
-          <meshBasicMaterial color={isWorking ? accentColor : '#162032'} />
-        </mesh>
+        <HoloMonitor
+          position={[0, 0, 0.025]}
+          color={accentColor}
+          active={isWorking}
+          index={1}
+        />
         <mesh position={[0, -0.26, 0.05]} castShadow>
           <boxGeometry args={[0.08, 0.1, 0.08]} />
           <meshStandardMaterial color="#162032" metalness={0.9} roughness={0.1} />
@@ -149,21 +419,16 @@ export default function AgentWorkstation({ agent, state, isSelected, onClick }: 
         <meshStandardMaterial color="#162032" metalness={0.7} roughness={0.4} />
       </mesh>
 
-      {/* Geometric 3D Avatar */}
-      <mesh ref={avatarRef} position={[0, 0.9, 0.4]} castShadow>
-        <octahedronGeometry args={[0.22]} />
-        <meshStandardMaterial
-          color={accentColor}
-          metalness={0.6}
-          roughness={0.2}
-          emissive={accentColor}
-          emissiveIntensity={isWorking ? 0.5 : 0.15}
-        />
-      </mesh>
+      {/* Humanoid Robot Character */}
+      <RobotCharacter
+        color={accentColor}
+        status={state.status}
+        isWorking={isWorking}
+      />
 
       {/* Avatar point light */}
       <pointLight
-        position={[0, 0.9, 0.4]}
+        position={[0, 1.0, 0.4]}
         intensity={isWorking ? 0.8 : 0.3}
         color={accentColor}
         distance={3}
@@ -171,7 +436,7 @@ export default function AgentWorkstation({ agent, state, isSelected, onClick }: 
       />
 
       {/* Floating status beacon */}
-      <group position={[0, 1.6, 0.4]}>
+      <group position={[0, 1.7, 0.4]}>
         <mesh ref={beaconRef}>
           <sphereGeometry args={[0.07, 12, 12]} />
           <meshBasicMaterial color={statusColor} />
@@ -191,7 +456,7 @@ export default function AgentWorkstation({ agent, state, isSelected, onClick }: 
 
       {/* Agent name label */}
       <Text
-        position={[0, 1.9, 0]}
+        position={[0, 2.0, 0]}
         fontSize={0.13}
         color={accentColor}
         font="https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD3oiw.woff"
@@ -203,7 +468,7 @@ export default function AgentWorkstation({ agent, state, isSelected, onClick }: 
 
       {/* Phase badge */}
       <Text
-        position={[0, 1.73, 0]}
+        position={[0, 1.83, 0]}
         fontSize={0.08}
         color="#64748B"
         anchorX="center"
@@ -211,6 +476,9 @@ export default function AgentWorkstation({ agent, state, isSelected, onClick }: 
       >
         {state.currentPhase}
       </Text>
+
+      {/* Workstation particles */}
+      <WorkstationParticles color={accentColor} active={isWorking} />
 
       {/* Selection ring */}
       {(isSelected || hovered) && (

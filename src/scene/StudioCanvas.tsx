@@ -10,6 +10,7 @@ import OfficeEnvironment from './OfficeEnvironment';
 import HermesCore from './HermesCore';
 import AgentWorkstation from './AgentWorkstation';
 import DataPacketStream from './DataPacketStream';
+import VisualEffects from './VisualEffects';
 import CameraRig from './CameraRig';
 import type { StudioEngineState, UIState, AgentId } from '../types/studio';
 import { AGENT_DEFINITIONS, AGENT_IDS } from '../data/agents';
@@ -46,6 +47,9 @@ export default function StudioCanvas({
         <Suspense fallback={null}>
           {/* Scene environment & lighting */}
           <OfficeEnvironment />
+
+          {/* Global visual effects: particles, scanlines, holo walls */}
+          <VisualEffects />
 
           {/* Camera rig with preset lerping */}
           <CameraRig activePreset={uiState.activeCameraPreset} />

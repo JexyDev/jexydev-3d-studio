@@ -1,8 +1,9 @@
 /**
  * HermesCore.tsx
  * The central server monolith representing Hermes (Lead Orchestrator).
- * Features multi-tier geometry, rotating holographic status rings,
- * and color-coded LED strips per pipeline phase.
+ * Features multi-tier geometry, 3 concentric gyroscope rings, vertical
+ * light beam, holographic data sphere, pulsing energy field, and
+ * color-coded LED strips per pipeline phase.
  */
 
 import { useRef, useMemo } from 'react';
@@ -20,11 +21,11 @@ interface HermesCoreProps {
 
 const PHASE_COLORS: Record<PipelinePhase, string> = {
   DISCOVER: '#64748B',
-  PLAN: '#A78BFA',
-  IMPLEMENT: '#38BDF8',
+  PLAN: '#22D3EE',
+  IMPLEMENT: '#10B981',
   VERIFY: '#FCD34D',
   AUDIT: '#F97316',
-  DEPLOY: '#10B981',
+  DEPLOY: '#F9A8D4',
 };
 
 export default function HermesCore({ currentPhase, isActive, onClick, isSelected }: HermesCoreProps) {
@@ -33,6 +34,9 @@ export default function HermesCore({ currentPhase, isActive, onClick, isSelected
   const ring3Ref = useRef<THREE.Mesh>(null);
   const coreRef = useRef<THREE.Group>(null);
   const glowRef = useRef<THREE.Mesh>(null);
+  const energyFieldRef = useRef<THREE.Mesh>(null);
+  const dataSphereRef = useRef<THREE.Mesh>(null);
+  const beamRef = useRef<THREE.Mesh>(null);
 
   const phaseColor = PHASE_COLORS[currentPhase];
 
@@ -44,17 +48,50 @@ export default function HermesCore({ currentPhase, isActive, onClick, isSelected
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
 
-    if (ring1Ref.current) ring1Ref.current.rotation.z = t * 0.6;
-    if (ring2Ref.current) ring2Ref.current.rotation.z = -t * 0.4;
-    if (ring3Ref.current) ring3Ref.current.rotation.x = t * 0.3;
+    // Gyroscope-style concentric rings at different speeds and axes
+    if (ring1Ref.current) {
+      ring1Ref.current.rotation.z = t * 0.6;
+      ring1Ref.current.rotation.x = Math.sin(t * 0.2) * 0.3;
+    }
+    if (ring2Ref.current) {
+      ring2Ref.current.rotation.z = -t * 0.4;
+      ring2Ref.current.rotation.y = t * 0.3;
+    }
+    if (ring3Ref.current) {
+      ring3Ref.current.rotation.x = t * 0.5;
+      ring3Ref.current.rotation.z = Math.cos(t * 0.25) * 0.4;
+    }
 
     if (coreRef.current && isSelected) {
       coreRef.current.rotation.y = t * 0.2;
     }
 
+    // Outer glow pulse
     if (glowRef.current) {
       const scale = 1 + Math.sin(t * 2) * 0.08;
       glowRef.current.scale.setScalar(scale);
+    }
+
+    // Energy field pulsing opacity
+    if (energyFieldRef.current) {
+      const mat = energyFieldRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.04 + Math.sin(t * 1.5) * 0.03;
+      energyFieldRef.current.rotation.y = t * 0.15;
+    }
+
+    // Data sphere rotation
+    if (dataSphereRef.current) {
+      dataSphereRef.current.rotation.y = t * 0.4;
+      dataSphereRef.current.rotation.x = t * 0.2;
+      dataSphereRef.current.position.y = 1.8 + Math.sin(t * 1.2) * 0.08;
+    }
+
+    // Beam flicker
+    if (beamRef.current) {
+      const mat = beamRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = isActive
+        ? 0.12 + Math.sin(t * 5) * 0.04
+        : 0.04;
     }
   });
 
@@ -74,6 +111,53 @@ export default function HermesCore({ currentPhase, isActive, onClick, isSelected
           transparent
           opacity={0.08}
           side={THREE.BackSide}
+        />
+      </mesh>
+
+      {/* ── Pulsing Energy Field ── */}
+      <mesh ref={energyFieldRef}>
+        <sphereGeometry args={[2.0, 32, 32]} />
+        <meshBasicMaterial
+          color={phaseColor}
+          transparent
+          opacity={0.04}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* ── Vertical Light Beam ── */}
+      <mesh ref={beamRef} position={[0, 3.5, 0]}>
+        <cylinderGeometry args={[0.08, 0.2, 5, 8, 1, true]} />
+        <meshBasicMaterial
+          color="#38BDF8"
+          transparent
+          opacity={0.1}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* ── Holographic Data Sphere (wireframe above) ── */}
+      <mesh ref={dataSphereRef} position={[0, 1.8, 0]}>
+        <icosahedronGeometry args={[0.35, 1]} />
+        <meshBasicMaterial
+          color={phaseColor}
+          wireframe
+          transparent
+          opacity={0.5}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* Inner solid sphere for data sphere */}
+      <mesh position={[0, 1.8, 0]}>
+        <sphereGeometry args={[0.12, 12, 12]} />
+        <meshStandardMaterial
+          color={phaseColor}
+          emissive={phaseColor}
+          emissiveIntensity={0.8}
+          metalness={0.5}
+          roughness={0.3}
         />
       </mesh>
 
@@ -109,11 +193,22 @@ export default function HermesCore({ currentPhase, isActive, onClick, isSelected
           />
         </mesh>
 
-        {/* LED strips — phase color */}
+        {/* LED strips — phase color (front, back, left, right) */}
         {[-0.5, 0.1, 0.65].map((y, i) => (
-          <mesh key={i} position={[0, y, 0.46]} material={ledMaterial}>
-            <boxGeometry args={[0.5, 0.04, 0.02]} />
-          </mesh>
+          <group key={i}>
+            <mesh position={[0, y, 0.46]} material={ledMaterial}>
+              <boxGeometry args={[0.5, 0.04, 0.02]} />
+            </mesh>
+            <mesh position={[0, y, -0.46]} material={ledMaterial}>
+              <boxGeometry args={[0.5, 0.04, 0.02]} />
+            </mesh>
+            <mesh position={[0.46, y, 0]} material={ledMaterial}>
+              <boxGeometry args={[0.02, 0.04, 0.5]} />
+            </mesh>
+            <mesh position={[-0.46, y, 0]} material={ledMaterial}>
+              <boxGeometry args={[0.02, 0.04, 0.5]} />
+            </mesh>
+          </group>
         ))}
 
         {/* Panel detail lines */}
@@ -125,25 +220,28 @@ export default function HermesCore({ currentPhase, isActive, onClick, isSelected
         ))}
       </group>
 
-      {/* Holographic rotating rings */}
+      {/* ── 3 Concentric Gyroscope Rings ── */}
+      {/* Ring 1 — largest, slow rotation */}
       <mesh ref={ring1Ref} position={[0, 0.2, 0]}>
-        <torusGeometry args={[1.1, 0.025, 8, 64]} />
+        <torusGeometry args={[1.3, 0.025, 8, 64]} />
         <meshBasicMaterial color="#38BDF8" transparent opacity={0.7} />
       </mesh>
 
-      <mesh ref={ring2Ref} position={[0, 0.4, 0]} rotation={[Math.PI / 3, 0, 0]}>
-        <torusGeometry args={[1.3, 0.015, 8, 64]} />
+      {/* Ring 2 — mid size, opposite direction */}
+      <mesh ref={ring2Ref} position={[0, 0.3, 0]} rotation={[Math.PI / 3, 0, 0]}>
+        <torusGeometry args={[1.1, 0.02, 8, 64]} />
         <meshBasicMaterial color={phaseColor} transparent opacity={0.5} />
       </mesh>
 
-      <mesh ref={ring3Ref} position={[0, 0.1, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.9, 0.012, 8, 48]} />
+      {/* Ring 3 — smallest, perpendicular axis */}
+      <mesh ref={ring3Ref} position={[0, 0.1, 0]} rotation={[Math.PI / 2, Math.PI / 4, 0]}>
+        <torusGeometry args={[0.9, 0.015, 8, 48]} />
         <meshBasicMaterial color="#10B981" transparent opacity={0.4} />
       </mesh>
 
       {/* Label */}
       <Text
-        position={[0, 1.6, 0]}
+        position={[0, 2.4, 0]}
         fontSize={0.18}
         color="#38BDF8"
         font="https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD3oiw.woff"
@@ -153,7 +251,7 @@ export default function HermesCore({ currentPhase, isActive, onClick, isSelected
         HERMES
       </Text>
       <Text
-        position={[0, 1.35, 0]}
+        position={[0, 2.15, 0]}
         fontSize={0.1}
         color="#94A3B8"
         anchorX="center"
