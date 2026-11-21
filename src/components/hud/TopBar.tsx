@@ -74,7 +74,7 @@ export default function TopBar({
       <div className="flex items-center gap-2 shrink-0">
         <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
         <span className="font-mono text-xs font-bold text-cyan-400 tracking-widest">
-          JEXYDEV // AUTONOMOUS STUDIO
+          JEXYDEV // 3D SYSTEMS STUDIO
         </span>
       </div>
 
@@ -98,7 +98,7 @@ export default function TopBar({
         }`}
         title={engineState.isRunning ? 'Click to pause simulation' : 'Click to resume simulation'}
       >
-        {engineState.isRunning ? '● AUTONOMOUS 24/7' : '⏸ PAUSED'}
+        {engineState.isRunning ? '● SIMULATION ONLINE' : '⏸ PAUSED'}
       </button>
 
       {/* Speed toggle */}
