@@ -32,7 +32,7 @@ export const PROJECTS: ProjectCard[] = [
       { label: 'Prisma ORM Models', value: '83' },
       { label: 'PostgreSQL Columns', value: '951+' },
       { label: 'API Endpoints', value: '659' },
-      { label: 'Git Commits', value: '4,119' },
+      { label: 'Core Git Commits', value: '3,333 (Main) / 4,119 (Total)' },
       { label: 'Lines of Code', value: '302,189' },
       { label: 'Live URL', value: 'berseka.id' },
       { label: 'Architecture', value: 'TypeScript Monorepo (NPM Workspaces)' },
